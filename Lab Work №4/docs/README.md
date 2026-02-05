@@ -89,6 +89,12 @@ API использует стандартные HTTP-коды:
 **API:** `/auth/register`
 **Метод:** `POST`
 
+### Типы входных данных
+- `email` — `string` (email, обязательное)
+- `password` — `string` (обязательное)
+- `admin_key` — `string | null` (необязательное)
+- `full_name` — `string` (обязательное)
+
 ### Пример запроса (CURL)
 
 ```
@@ -127,6 +133,10 @@ postman request POST 'http://127.0.0.1:8000/api/v1/auth/register' \
 **API:** `/auth/login`
 **Метод:** `POST`
 
+### Типы входных данных
+- `email` — `string` (обязательное)
+- `password` — `string` (обязательное)
+
 ### Пример запроса (CURL)
 
 ```
@@ -162,6 +172,9 @@ postman request POST 'http://127.0.0.1:8000/api/v1/auth/login' \
 **API:** `/auth/refresh`
 **Метод:** `POST`
 
+### Типы входных данных
+- `Authorization` — `Bearer <JWT access_token>` (HTTP header)
+
 ### Пример запроса (CURL)
 
 ```
@@ -195,10 +208,11 @@ postman request POST 'http://127.0.0.1:8000/api/v1/auth/refresh' \
 **API:** `/student/submissions`
 **Метод:** `POST`
 
-### Параметры
+### Типы входных данных
+- `task_id` — `integer` (query parameter, обязательный)
+- `file` — `UploadFile` (multipart/form-data)
+- `Authorization` — `Bearer <JWT access_token>` (HTTP header)
 
-* `task_id` — ID задания
-* `file` — файл работы
 
 ### Пример запроса (CURL)
 
@@ -239,6 +253,11 @@ postman request POST 'http://127.0.0.1:8000/api/v1/student/submissions?task_id=1
 **API:** `/student/submissions/{submission_id}`
 **Метод:** `GET`
 
+### Типы входных данных
+- `submission_id` — `integer` (path parameter)
+- `Authorization` — `Bearer <JWT access_token>` (HTTP header)
+
+
 ### Пример запроса (CURL)
 
 ```
@@ -274,6 +293,11 @@ postman request 'http://127.0.0.1:8000/api/v1/student/submissions/4' \
 
 **API:** `/admin/update_user_role/{user_id}`
 **Метод:** `PUT`
+
+### Типы входных данных
+- `user_id` — `integer` (path parameter)
+- `new_role` — `string` (query parameter, допустимые значения: `ADMIN`, `USER`)
+- `Authorization` — `Bearer <JWT access_token>` (HTTP header)
 
 ### Пример запроса
 
@@ -311,6 +335,9 @@ postman request PUT 'http://127.0.0.1:8000/api/v1/admin/update_user_role/2?new_r
 
 **API:** `/admin/users/`
 **Метод:** `GET`
+
+### Типы входных данных
+- `Authorization` — `Bearer <JWT access_token>` (HTTP header)
 
 
 ### Пример запроса
@@ -352,3 +379,346 @@ postman request 'http://127.0.0.1:8000/api/v1/admin/users/' \
     "detail": "Forbidden - admin role required"
 }
 ```
+
+## Тестирование API
+
+
+### 1. Регистрация пользователя
+
+**API:** `/auth/register`
+**Метод:** `POST`
+
+
+### Тело запроса
+
+```json
+{
+    "email": "admin5@mail.com",
+    "password": "123456",
+    "admin_key": "ADMIN",
+    "full_name": "Admin 4"
+}
+```
+
+
+
+### Полученный ответ
+
+```json
+{
+    "message": "User registered successfully",
+    "user_id": 11
+}
+```
+
+### Автотесты
+
+**Проверка на 200 или 201 код и наличие user_id**
+```javascript
+pm.test("Status code is 200 or 201", function () {
+    pm.expect(pm.response.code).to.be.oneOf([200, 201]);
+});
+
+pm.test("Response contains user_id", function () {
+    const json = pm.response.json();
+    pm.expect(json).to.have.property("user_id");
+    pm.expect(json.user_id).to.be.a("number");
+});
+```
+
+---
+
+### 2. Аутентификация пользователя
+
+**API:** `/auth/login`
+**Метод:** `POST`
+
+
+### Тело запроса
+
+```json
+{
+    "email": "admin5@mail.com",
+    "password": "123456"
+}
+```
+
+
+
+### Полученный ответ
+
+```json
+{
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMSwicm9sZSI6IkFETUlOIiwiZXhwIjoxNzcwMjkxOTQ3fQ.lkR0GB_zXrIeskafmNFJ33CrSFWcihthFvtyHtyjloE",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMSwiZXhwIjoxNzcwMzc3NDQ3fQ.7uT7qiWniuFZNmrfvTHX4RRt3IAuAN00-UlyWnYqKk0"
+}
+```
+
+### Автотесты
+
+**Проверка на 200 или 201 код, наличие токена и сохранение токена в окружение  для использования в запросах**
+```javascript
+pm.test("Status code is 200 or 201", function () {
+    pm.expect(pm.response.code).to.be.oneOf([200, 201]);
+});
+
+pm.test("Response contains access_token", function () {
+    const json = pm.response.json();
+    pm.expect(json).to.have.property("access_token");
+});
+
+pm.environment.set(
+    "access_token",
+    pm.response.json().access_token
+);
+```
+
+---
+
+### 3. Обновление access-токена
+
+**API:** `/auth/refresh`
+**Метод:** `POST`
+
+### Заголовки
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMSwicm9sZSI6IkFETUlOIiwiZXhwIjoxNzcwMjkxOTQ3fQ.lkR0GB_zXrIeskafmNFJ33CrSFWcihthFvtyHtyjloE
+```
+
+
+
+### Полученный ответ
+
+```json
+{
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMSwicm9sZSI6IkFETUlOIiwiZXhwIjoxNzcwMjkxOTQ3fQ.lkR0GB_zXrIeskafmNFJ33CrSFWcihthFvtyHtyjloE"
+}
+```
+
+### Автотесты
+
+**Проверка на 200 код и наличие нового access_token**
+```javascript
+pm.test("Status code is 200", function () {
+    pm.response.to.have.status(200);
+});
+
+pm.test("New access token returned", function () {
+    pm.expect(pm.response.json())
+        .to.have.property("access_token");
+});
+```
+
+---
+
+### 4. Загрузка работы студентом
+
+**API:** `/student/submissions?task=1&file="test.py"`
+**Метод:** `POST`
+
+
+### Заголовки
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMSwicm9sZSI6IkFETUlOIiwiZXhwIjoxNzcwMjkxOTQ3fQ.lkR0GB_zXrIeskafmNFJ33CrSFWcihthFvtyHtyjloE
+```
+
+
+### Полученный ответ
+
+```json
+{
+    "id": 7,
+    "role": "USER",
+    "task_id": 1,
+    "file_name": "\"test.py\"",
+    "status": "Submitted successfully"
+}
+```
+
+### Автотесты
+
+**Проверка на 200 или 201 код, наличие task_id и file_name**
+```javascript
+pm.test("Status code is 200 or 201", function () {
+    pm.expect(pm.response.code).to.be.oneOf([200, 201]);
+});
+
+pm.test("Submission response contains task_id", function () {
+    pm.expect(pm.response.json())
+        .to.have.property("task_id");
+});
+
+pm.test("File name returned", function () {
+    pm.expect(pm.response.json())
+        .to.have.property("file_name");
+});
+```
+
+---
+
+### 5. Получение результата проверки
+
+**API:** `/student/submissions/7`
+**Метод:** `GET`
+
+### Заголовки
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMSwicm9sZSI6IkFETUlOIiwiZXhwIjoxNzcwMjkxOTQ3fQ.lkR0GB_zXrIeskafmNFJ33CrSFWcihthFvtyHtyjloE
+```
+
+
+### Полученный ответ
+
+```json
+{
+    "id": 5,
+    "role": "ADMIN",
+    "email": "test1@email.com",
+    "submission_id": 4,
+    "result": "Some result..."
+}
+```
+
+### Автотесты
+
+**Проверка на 200 код, совпадение submission_id и наличие результата**
+```javascript
+pm.test("Status code is 200", function () {
+    pm.response.to.have.status(200);
+});
+
+pm.test("Submission id matches", function () {
+    const json = pm.response.json();
+    pm.expect(json.submission_id).to.be.a("number");
+});
+
+pm.test("Result field exists", function () {
+    pm.expect(pm.response.json())
+        .to.have.property("result");
+});
+```
+
+---
+
+### 6. Обновление роли пользователя
+
+**API:** `/admin/update_user_role/2?new_role=ADMIN`
+**Метод:** `PUT`
+
+### Заголовки
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMSwicm9sZSI6IkFETUlOIiwiZXhwIjoxNzcwMjkxOTQ3fQ.lkR0GB_zXrIeskafmNFJ33CrSFWcihthFvtyHtyjloE
+```
+
+### Полученный ответ
+
+```json
+{
+    "email": "test",
+    "id": 2,
+    "password": "$2b$12$mcdJ5UMKhRtFH/Gp/qKMEuFvnFdEksPS2gt0Jc7dEI4aoCw.dxN6i",
+    "full_name": "Ярослав Тестович",
+    "role_id": 1,
+    "last_entry_date": null,
+    "role": "ADMIN"
+}
+```
+
+### Автотесты
+
+**Проверка на 200 или 201 код и наличие установленной роли в ответе**
+```javascript
+pm.test("Status code is 200", function () {
+    pm.response.to.have.status(200);
+});
+
+pm.test("Role field exists", function () {
+    pm.expect(pm.response.json())
+        .to.have.property("role");
+});
+```
+
+---
+
+### 7. Получение списка всех пользователей
+
+**API:** `/admin/users/`
+**Метод:** `GET`
+
+### Заголовки
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMSwicm9sZSI6IkFETUlOIiwiZXhwIjoxNzcwMjkxOTQ3fQ.lkR0GB_zXrIeskafmNFJ33CrSFWcihthFvtyHtyjloE
+```
+
+
+
+### Полученный ответ
+
+```json
+[
+    {
+        "email": "test1",
+        "id": 3,
+        "password": "$2b$12$2I6jyK/6eeTfiPzWH4n0yeuj5UWkdfGKsoPEXha7ucNmhFll8V9LW",
+        "full_name": "Ярослав Студент",
+        "role_id": 2,
+        "last_entry_date": null
+    },
+    {
+        "email": "student@mail.com",
+        "id": 4,
+        "password": "$2b$12$EPvuGyJticd9D3DPRUT5Fe6zPujsza0V7idMzBa7YONYFQmhp.R5m",
+        "full_name": "Student 1",
+        "role_id": 2,
+        "last_entry_date": null
+    },
+    {
+        "email": "admin4@mail.com",
+        "id": 10,
+        "password": "$2b$12$42/hwikh8zDMFvihr4txiO.DGNyRGKDPyRs.0/PqvvxKbeB93rjgC",
+        "full_name": "Admin 4",
+        "role_id": 1,
+        "last_entry_date": null
+    },
+    {
+        "email": "admin5@mail.com",
+        "id": 11,
+        "password": "$2b$12$MhapB8aZMv8CqMm/Uajf7.Kp9WAsjasKn2n1sBC13gBXdvxgH.Z06",
+        "full_name": "Admin 4",
+        "role_id": 1,
+        "last_entry_date": null
+    }
+]
+```
+
+### Автотесты
+
+**Проверка на 200 код, наличие списка пользователя и наличие в нем значений**
+```javascript
+pm.test("Status code is 200", function () {
+    pm.response.to.have.status(200);
+});
+
+pm.test("Response is an array", function () {
+    const json = pm.response.json();
+    pm.expect(json).to.be.an("array");
+});
+
+pm.test("Array is not empty", function () {
+    pm.expect(pm.response.json().length).to.be.greaterThan(0);
+});
+```
+
+---
+### Результаты тестирования
+
+Все тесты пройдены успешно
+
+![img.png](img.png)
+
+![img_1.png](img_1.png)
